@@ -475,21 +475,27 @@ void Camera::ComputeViewOrientation(glm::vec3& vrp, glm::vec3& vpn, glm::vec3& v
     //std::cout << " Camera::ComputeViewOrientation(vec3&, vec3&, vec3&): Not implemented yet!" << std::endl; // Probably implemented
     // My implementation below
     // Translation
-    glm::mat4x4 translation_on_vrp_matrix = glm::translate(-vrp);
-
+    glm::mat4x4 translation_on_vrp_matrix = glm::translate(-this->vrp);
+    
     // Rotation matrix entries
     glm::mat4x4 rotation_matrix(1.0f);
     glm::vec3 rot_x;
     glm::vec3 rot_y;
     glm::vec3 rot_z;
 
-    rot_z = glm::normalize(vpn);
-    rot_x = glm::normalize(glm::cross(vup, rot_z));
+    rot_z = glm::normalize(this->vpn);
+    rot_x = glm::normalize(glm::cross(this->vup, rot_z));
     rot_y = glm::normalize(glm::cross(rot_z, rot_x));
-    glm::row(rotation_matrix, 0) = glm::vec4(rot_x.x, rot_x.y, rot_x.z, 0);  // Row 1 is rot_x and a 0
-    glm::row(rotation_matrix, 1) = glm::vec4(rot_y.x, rot_y.y, rot_y.z, 0);
-    glm::row(rotation_matrix, 2) = glm::vec4(rot_z.x, rot_z.y, rot_z.z, 0);
-    glm::row(rotation_matrix, 3) = glm::vec4(0, 0, 0, 1);
+
+    rotation_matrix[0] = glm::vec4(rot_x.x, rot_y.x, rot_z.x, 0);
+    rotation_matrix[1] = glm::vec4(rot_x.y, rot_y.y, rot_z.y, 0);
+    rotation_matrix[2] = glm::vec4(rot_x.z, rot_y.z, rot_z.z, 0);
+    rotation_matrix[3] = glm::vec4(0, 0, 0, 1);
+
+    //glm::row(rotation_matrix, 0) = glm::vec4(rot_x.x, rot_x.y, rot_x.z, 0);  // Row 1 is rot_x and a 0
+    //glm::row(rotation_matrix, 1) = glm::vec4(rot_y.x, rot_y.y, rot_y.z, 0);
+    //glm::row(rotation_matrix, 2) = glm::vec4(rot_z.x, rot_z.y, rot_z.z, 0);
+    //glm::row(rotation_matrix, 3) = glm::vec4(0, 0, 0, 1);
 
     this->vieworientationmatrix = rotation_matrix * translation_on_vrp_matrix;
     this->invvieworientationmatrix = glm::transpose(translation_on_vrp_matrix) * glm::transpose(rotation_matrix);
@@ -517,32 +523,41 @@ void Camera::ComputeViewProjection(glm::vec3& prp,
     glm::mat4x4 M_per_par(1.0f);
        
     // Translation 
-    glm::mat4x4 translation_on_prp = glm::translate(-prp);
+    glm::mat4x4 translation_on_prp = glm::translate(-this->prp);
 
     // Shear xy
     glm::vec3 CW(1.0f);
     glm::vec3 dop(1.0f);
 
-    CW = glm::vec3((upper_right_window.x + lower_left_window.x) / 2, (upper_right_window.y + lower_left_window.y) / 2, 0);
+    CW = glm::vec3((this->upper_right_window.x + this->lower_left_window.x) / 2, (this->upper_right_window.y + this->lower_left_window.y) / 2, 0);
     dop = prp - CW;
     float sh_x = -dop.x / dop.z;
     float sh_y = -dop.y / dop.z;
-    shear_xy[0] = glm::vec4(1, 0, 0, 0);
-    shear_xy[1] = glm::vec4(0, 1, 0, 0);
-    shear_xy[2] = glm::vec4(sh_x, sh_y, 1, 0);
-    shear_xy[3] = glm::vec4(0, 0, 0, 1);
+    shear_xy = glm::shearXY(sh_x, sh_y);
+    //shear_xy[0] = glm::vec4(1, 0, 0, 0);
+    //shear_xy[1] = glm::vec4(0, 1, 0, 0);
+    //shear_xy[2] = glm::vec4(sh_x, sh_y, 1, 0);
+    //shear_xy[3] = glm::vec4(0, 0, 0, 1);
 
     //Scale  (u, v, n)
-    float scale_x = -2 * prp.z / ((upper_right_window.x - lower_left_window.x) * (back_clipping_plane - prp.z));
-    float scale_y = -2 * prp.z / ((upper_right_window.y - lower_left_window.y) * (back_clipping_plane - prp.z));
-    float scale_z = -1 / (back_clipping_plane - prp.z);
-    scale[0] = glm::vec4(scale_x, 0, 0, 0);
-    scale[1] = glm::vec4(0, scale_y, 0, 0);
-    scale[2] = glm::vec4(0, 0, scale_z, 0);
-    scale[3] = glm::vec4(0, 0, 0, 1);
+    float scale_x = -2 * this->prp.z / ((this->upper_right_window.x - this->lower_left_window.x) * (back_clipping_plane - this->prp.z));
+    float scale_y = -2 * this->prp.z / ((this->upper_right_window.y - this->lower_left_window.y) * (back_clipping_plane - this->prp.z));
+    float scale_z = -1 / (back_clipping_plane - this->prp.z);
+    scale = glm::scale(scale_x, scale_y, scale_z);
+    //scale[0] = glm::vec4(scale_x, 0, 0, 0);
+    //scale[1] = glm::vec4(0, scale_y, 0, 0);
+    //scale[2] = glm::vec4(0, 0, scale_z, 0);
+    //scale[3] = glm::vec4(0, 0, 0, 1);
 
     // Canonical Perspective view volume -> Canonical Orthographic View volume
     float Z_max = -(front_clipping_plane - prp.z) / (back_clipping_plane - prp.z);
+    float M_per_par_Z_pos_term = 1 / (1 + Z_max);
+    float M_per_par_Z_neg_term = -Z_max / (1 + Z_max);
+    /*glm::row(M_per_par, 0) = glm::vec4(1, 0, 0, 0);
+    glm::row(M_per_par, 1) = glm::vec4(0, 1, 0, 0);
+    glm::row(M_per_par, 2) = glm::vec4(0, 0, M_per_par_Z_pos_term, M_per_par_Z_neg_term);
+    glm::row(M_per_par, 3) = glm::vec4(0, 0, -1, 0);*/
+
     M_per_par[0] = glm::vec4(1, 0, 0, 0);
     M_per_par[1] = glm::vec4(0, 1, 0, 0);
     M_per_par[2] = glm::vec4(0, 0, 1/(1 + Z_max), -1);
