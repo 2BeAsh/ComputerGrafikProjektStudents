@@ -217,8 +217,10 @@ glm::mat4x4 Camera::InvWindowViewport() const
  */
 glm::mat4x4 Camera::CurrentTransformationMatrix()
 {
-    std::cout << "Camera::CurrentTransformationMatrix(): Not implemented yet!" << std::endl;
-    
+    //std::cout << "Camera::CurrentTransformationMatrix(): Not implemented yet!" << std::endl;  // Probably implemented
+    // My implementation below:
+    //this->currenttransformationmatrix = this->WindowViewport() * this->ViewProjection() * this->ViewOrientation();
+    this->currenttransformationmatrix = this->windowviewportmatrix * this->viewprojectionmatrix * this->vieworientationmatrix;
     return this->currenttransformationmatrix;
 }
 
@@ -234,8 +236,10 @@ glm::mat4x4 Camera::InvCurrentTransformationMatrix()
     TraceMessage("InvViewProjection() = " << std::endl << this->invviewprojectionmatrix << std::endl;);
     TraceMessage("InvWindowViewport() = " << std::endl << this->invwindowviewportmatrix << std::endl;);
 
-    std::cout << "Camera::InvCurrentTransformationMatrix(): Not implemented yet!" << std::endl;
-    
+    std::cout << "Camera::InvCurrentTransformationMatrix(): Not implemented yet!" << std::endl;  // Might be implemented
+    // My implementation below:
+    this->invcurrenttransformationmatrix = this->InvViewOrientation() * this->InvViewProjection() * this->InvWindowViewport();
+
     return this->invcurrenttransformationmatrix;
 }
 
@@ -468,7 +472,27 @@ void Camera::ComputeViewOrientation(glm::vec3& vrp, glm::vec3& vpn, glm::vec3& v
 {
     Trace("Camera", "ComputeViewOrientation(vec3&, vec3&, vec3&)");
 
-    std::cout << " Camera::ComputeViewOrientation(vec3&, vec3&, vec3&): Not implemented yet!" << std::endl;
+    //std::cout << " Camera::ComputeViewOrientation(vec3&, vec3&, vec3&): Not implemented yet!" << std::endl; // Probably implemented
+    // My implementation below
+    // Translation
+    glm::mat4x4 translation_on_vrp_matrix = glm::translate(-vrp);
+
+    // Rotation matrix entries
+    glm::mat4x4 rotation_matrix(1.0f);
+    glm::vec3 rot_x;
+    glm::vec3 rot_y;
+    glm::vec3 rot_z;
+
+    rot_z = glm::normalize(vpn);
+    rot_x = glm::normalize(glm::cross(vup, rot_z));
+    rot_y = glm::normalize(glm::cross(rot_z, rot_x));
+    glm::row(rotation_matrix, 0) = glm::vec4(rot_x.x, rot_x.y, rot_x.z, 0);  // Row 1 is rot_x and a 0
+    glm::row(rotation_matrix, 1) = glm::vec4(rot_y.x, rot_y.y, rot_y.z, 0);
+    glm::row(rotation_matrix, 2) = glm::vec4(rot_z.x, rot_z.y, rot_z.z, 0);
+    glm::row(rotation_matrix, 3) = glm::vec4(0, 0, 0, 1);
+
+    this->vieworientationmatrix = rotation_matrix * translation_on_vrp_matrix;
+    this->invvieworientationmatrix = glm::transpose(translation_on_vrp_matrix) * glm::transpose(rotation_matrix);
 }
 
 /*
@@ -486,7 +510,47 @@ void Camera::ComputeViewProjection(glm::vec3& prp,
 {
     Trace("Camera", "ComputeViewProjection(vec3&, vec2&, vec2&, float, float)");
 
-    std::cout << "Camera::ComputeViewProjection(vec3&, vec2&, vec2&, float, float): Not Implemented yet!" << std::endl;
+    //std::cout << "Camera::ComputeViewProjection(vec3&, vec2&, vec2&, float, float): Not Implemented yet!" << std::endl;  // Probably implemented 
+    // My implementation below
+    glm::mat4x4 shear_xy(1.0f);
+    glm::mat4x4 scale(1.0f);
+    glm::mat4x4 M_per_par(1.0f);
+       
+    // Translation 
+    glm::mat4x4 translation_on_prp = glm::translate(-prp);
+
+    // Shear xy
+    glm::vec3 CW(1.0f);
+    glm::vec3 dop(1.0f);
+
+    CW = glm::vec3((upper_right_window.x + lower_left_window.x) / 2, (upper_right_window.y + lower_left_window.y) / 2, 0);
+    dop = prp - CW;
+    float sh_x = -dop.x / dop.z;
+    float sh_y = -dop.y / dop.z;
+    shear_xy[0] = glm::vec4(1, 0, 0, 0);
+    shear_xy[1] = glm::vec4(0, 1, 0, 0);
+    shear_xy[2] = glm::vec4(sh_x, sh_y, 1, 0);
+    shear_xy[3] = glm::vec4(0, 0, 0, 1);
+
+    //Scale  (u, v, n)
+    float scale_x = -2 * prp.z / ((upper_right_window.x - lower_left_window.x) * (back_clipping_plane - prp.z));
+    float scale_y = -2 * prp.z / ((upper_right_window.y - lower_left_window.y) * (back_clipping_plane - prp.z));
+    float scale_z = -1 / (back_clipping_plane - prp.z);
+    scale[0] = glm::vec4(scale_x, 0, 0, 0);
+    scale[1] = glm::vec4(0, scale_y, 0, 0);
+    scale[2] = glm::vec4(0, 0, scale_z, 0);
+    scale[3] = glm::vec4(0, 0, 0, 1);
+
+    // Canonical Perspective view volume -> Canonical Orthographic View volume
+    float Z_max = -(front_clipping_plane - prp.z) / (back_clipping_plane - prp.z);
+    M_per_par[0] = glm::vec4(1, 0, 0, 0);
+    M_per_par[1] = glm::vec4(0, 1, 0, 0);
+    M_per_par[2] = glm::vec4(0, 0, 1/(1 + Z_max), -1);
+    M_per_par[3] = glm::vec4(0, 0, -Z_max/(1+Z_max), 0);
+
+    this->viewprojectionmatrix = M_per_par * scale * shear_xy * translation_on_prp;
+    // OBS translation_on_prp maybe wrong when inversed:
+    this->invviewprojectionmatrix = glm::transpose(translation_on_prp) * glm::transpose(shear_xy) * glm::transpose(scale)* glm::transpose(M_per_par);
 }
 
 /*
